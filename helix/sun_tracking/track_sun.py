@@ -1,11 +1,10 @@
 import numpy as np
 import ephem
-from sys import argv
-
-script, filename = argv
+from math import degrees
 
 # Expects an Nx5 table with mission day, lat, long, alt, (pressure?)
-flight_data = np.load(filename)
+flight_data = np.load("flight_data.npy")
+
 # mission day, lat, long, alt (km), (pressure?), horizon alt, azimuth
 sun_data = np.zeros((len(flight_data), len(flight_data[0]) + 2))
 
@@ -23,8 +22,8 @@ for i in range(len(flight_data)):
     sun.compute(helix)
 
     sun_data[i,0:5] = flight_data[i]
-    sun_data[i,5] = sun.alt
-    sun_data[i,6] = sun.az
+    sun_data[i,5] = degrees(sun.alt)
+    sun_data[i,6] = degrees(sun.az)
 
 print(sun_data)
 np.save("sun_data.npy", sun_data)
@@ -32,5 +31,4 @@ np.savetxt("sun_data.csv", sun_data, delimiter=", ",
            header="mission day, lat, long, alt, (pressure?), horizon alt, azimuth",
            fmt=["%.3f", "%.4f", "%.3f", "%.4f", "%.3f", "%.5f", "%.5f"]
            )
-
 
