@@ -17,6 +17,7 @@ for i in range(len(sun_data)):
 fig = plt.figure(dpi=100)
 ax = fig.add_subplot(1, 1, 1)
 ax.plot(days, alts, 'r,')
+# ax.plot(days, helix_alts, 'b,')
 ax.set_xlabel("Projected Mission Day")
 ax.set_ylabel("Altitude (deg)")
 ax.set_title("Altitude Above Horizon of Sun For Projected Flight Path")
