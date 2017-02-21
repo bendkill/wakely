@@ -119,7 +119,7 @@ for i in range(len(flight_data)):
                     str(dec_year) + "\n"
 
     inputs_file = open("wmm_inputs.txt", 'w+')
-    inputs_file.write(inputs_string);
+    inputs_file.write(inputs_string)
     inputs_file.seek(0)
 
     outputs_file = open("wmm_outputs.txt", 'w+')

@@ -14,7 +14,7 @@ sun = ephem.Sun()
 helix = ephem.Observer()
 
 for i in range(len(flight_data)):
-    idx = i                    # change to be stationary or i
+    idx = i
     helix.date = start_date + flight_data[i,0]
     # print(flight_data[idx,1])
     helix.lat = radians(flight_data[idx,1])
