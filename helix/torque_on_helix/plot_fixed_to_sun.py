@@ -3,9 +3,10 @@ import matplotlib.pyplot as plt
 
 # mission_day, lat, long, alt, B decl, B incl, B mag, sun horizon alt
 # (deg), sun azimuth (deg), torque (Nm)
-torque_data = np.load("torque_data.npy")
+torque_data = np.load("torque_data_fixed_sun.npy")
 days = torque_data[:,0]
-torques = torque_data[:,9]
+phis = torque_data[:,9]
+torques = torque_data[:,10]
 sun_azims = torque_data[:,8]
 
 def my_plot(xs, ys, fmt='r,', xlabel='', ylabel='',
@@ -33,7 +34,13 @@ def double_plot(xs, ys1, ys2, fmt='r,', xlabel='', ylabel1='', ylabel2='',
     ax2.set_ylabel(ylabel2)
     plt.savefig(filename)
     plt.close()
- 
+
+my_plot(days, phis,
+        xlabel="Projected Mission Day",
+        ylabel="Angle to Sun (deg)",
+        title= "Angle to Sun, Assume Fixed to Earth Field",
+        filename="plots/angle_to_sun.png")
+    
 my_plot(days, torques,
         xlabel="Projected Mission Day",
         ylabel="Torque on HELIX (Nm)",

@@ -35,8 +35,8 @@ sun_data = np.load("sun_data_alts.npy")
 earth_field_data = np.load("field_data.npy")
 
 # mission_day, lat, long, alt, B decl, B incl, B mag, sun horizon alt
-# (deg), sun azimuth (deg), torque (Nm)
-torque_data = np.zeros((len(sun_data), 10))
+# (deg), sun azimuth (deg), phi, torque (Nm)
+torque_data = np.zeros((len(sun_data), 11))
 torque_data[:,:7] = earth_field_data[:,:7]
 torque_data[:,7:9] = sun_data[:,5:7]
 
@@ -44,6 +44,14 @@ for i in range(len(sun_data)):
     B_e = earth_field_data[i,6]
     theta = math.radians(earth_field_data[i,5])
     phi = math.radians(earth_field_data[i,4] - sun_data[i,5])
-    torque_data[i,9] = torque_on_helix(B_e, theta, phi)
+    torque_data[i,9] = math.degrees(phi)
+    torque_data[i,10] = torque_on_helix(B_e, theta, phi)
 
-np.save("torque_data.npy", torque_data)
+np.save("torque_data_fixed_sun.npy", torque_data)
+np.savetxt("torque_data_fixed_sun.csv", torque_data, delimiter=", ",
+           fmt=["%.3f", "%.4f", "%.3f", "%.4f",
+                "%.3f", "%.3f", "%.5e", "%.5e",
+                "%.3f", "%.3f", "%.3f"],
+           header="mission_day, lat, long, alt, B decl, B incl, " +\
+           "B mag (T), sun horizon alt, sun azimuth (E from N), phi " +\
+           "(sun to field, deg), torque (Nm)")
