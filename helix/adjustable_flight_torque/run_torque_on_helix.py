@@ -41,9 +41,9 @@ from toYearFraction import toYearFraction
 parser = argparse.ArgumentParser(description='Output angle to sun, \
 torque on Helix.')
 parser.add_argument('-l', '--lat', nargs=1, default=[-80], type=float,
-                    help="set the constant latitude")
+                    help="set the constant latitude, in degrees")
 parser.add_argument('-a', '--alt', nargs=1, default=[3600], type=float,
-                    help="set the constant altitude")
+                    help="set the constant altitude, in meters")
 parser.add_argument('-f', '--filename', nargs=1,
                     default=["fix_lat_alt_torque_data"],
                     help="set the output filename, no extension")
@@ -53,11 +53,19 @@ parser.add_argument('-s', '--startdate', nargs=1, default=["2018/12/30"], # 2018
                     help="set the startdate for projections, yyyy/mm/dd, between 2015 and 2020")
                     
 args = parser.parse_args()
-global lat; lat = args.lat[0]
-global alt; alt = args.alt[0]
-global filename; filename = args.filename[0]
-global crest; crest = args.crest
-global start_date; start_date = args.startdate[0]
+global lat
+global alt
+global filename
+global crest
+global start_date
+global crest_flight_data
+
+lat = args.lat[0]
+alt = args.alt[0]
+filename = args.filename[0]
+crest = args.crest
+start_date = args.startdate[0]
+crest_flight_data = np.load("crest_flight_data.npy")
 
 def set_lat(new_lat):
     global lat
@@ -68,6 +76,7 @@ def set_alt(new_alt):
     alt = new_alt
 
 ################################################################################
+# main torque function
 
 def torque_on_helix(B_e, theta, phi):
     # Angles should be in radians
@@ -76,6 +85,9 @@ def torque_on_helix(B_e, theta, phi):
     return 2 * B_e * math.pi * R**2 * I *\
         math.sqrt(math.cos(theta)**2 +
                   (math.sin(theta) * math.cos(phi))**2)
+
+################################################################################
+# functions for creating various data sets
 
 def process_wmm_outputs(handle):
     # takes the output of the wmm_point.exe	
@@ -102,11 +114,11 @@ def process_wmm_outputs(handle):
 
     return data
 
-def make_field_data(crest_flight_data):
+def make_field_data():
     if crest:
         return np.load("field_data_sets/crest.npy")[:,4:7]
 
-    out_file_name = "field_data_sets/%f_%f_data.npy" % (lat, alt)
+    out_file_name = "field_data_sets/lat_%f_alt_%f_field_data.npy" % (lat, alt)
     if os.path.isfile(out_file_name):
         return np.load(out_file_name)[:,5:8]
 
@@ -115,7 +127,7 @@ def make_field_data(crest_flight_data):
     field_data = np.zeros((len(crest_flight_data), len(crest_flight_data[0]) + 3))
     field_data[:,0:5] = crest_flight_data
 
-    print("Making field data; lat: %f, alt: %f" % (lat, alt))
+    print("Making field data; lat: %f, alt: %f..." % (lat, alt))
 
     start_year = toYearFraction(start_date) # default start_date = '2018/12/30'
     
@@ -144,49 +156,68 @@ def make_field_data(crest_flight_data):
 
     np.save(out_file_name, field_data)
     
-    return crest_flight_data[:,5:8]
+    return field_data[:,5:8]
 
-def make_sun_data(crest_flight_data):
+def make_sun_data():
     if crest:
-        return np.load('sun_data_sets/crest.npy')[:,4:7]
-    
-    sun_data = np.zeros((len(crest_flight_data), len(crest_flight_data[0]) + 2))
+        return np.load('sun_data_sets/crest.npy')[:,5:7]
 
+    out_file_name = "sun_data_sets/lat_%f_alt_%f_sun_data.npy" % (lat, alt)
+    if os.path.isfile(out_file_name):
+        return np.load(out_file_name)[:,5:7]
+    
+    # mission day, lat, long, alt, (pressure?), alt, azimuth
+    sun_data = np.zeros((len(crest_flight_data), len(crest_flight_data[0]) + 2))
+    
     start_day = ephem.date(start_date)
     sun = ephem.Sun()
     helix = ephem.Observer()
+    helix.lat = radians(lat)
+    helix.elevation = alt
+
+    print("Making sun data...")
 
     for i in range(len(flight_data)):
         helix.date = start_date + flight_data[i,0]
-        # print(flight_data[idx,1])
-        helix.lat = radians(flight_data[idx,1])
+
         helix.lon = radians(flight_data[idx,2])
-        # convert to meters:
-        helix.elevation = flight_data[idx,3] * 1000
         # Can also specify temperature or pressure, if that's what the last
         # column specifies
         sun.compute(helix)
     
-        sun_data[i,0:5] = flight_data[i]
         sun_data[i,5] = degrees(sun.alt)
         sun_data[i,6] = degrees(sun.az)
 
+    np.save(out_file_name, sun_data)
+
+    return sun_data[:,5:7]
+
+def make_torque_data():
+    
 
 ################################################################################
-
-# mission day, lat, long, alt, (pressure?)
-crest_flight_data = np.load("crest_flight_data.npy")
-
-# mission day, lat, long, alt, (pressure?),
-# B local decl (deg), B local incl (deg), B mag (T)
-torque_data = np.zeros((len(crest_flight_data), len(crest_flight_data) + 3))
-
-torque_data[:,0:5] = crest_flight_data
-torque_data[:,5:8] = make_field_data(crest_flight_data)
+# plot functions
 
 
+################################################################################
+# define and execute main, if this is being run as a script
+# (might want to use plot, make_sun_data, and such in the python interpreter)
 
+def main():
+    # crest_flight_data has:
+    # mission day, lat, long, alt, (pressure?)
 
+    # mission day, lat, long, alt, (pressure?),
+    # B local decl (deg), B local incl (deg), B mag (T)
+    torque_data = np.zeros((len(crest_flight_data),
+                            len(crest_flight_data) + 3 + 2))
+
+    torque_data[:,0:5] = crest_flight_data
+    torque_data[:,5:8] = make_field_data(crest_flight_data)
+    torque_data[:,8:10] = make_sun_data(crest_flight_data)
+    
+
+if __name__ == "__main__": main()
 
 # for i in range(len(sun_data)):
 #     B_e = earth_field_data[i,6]
