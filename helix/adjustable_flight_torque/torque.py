@@ -32,6 +32,7 @@ import string
 import os
 import subprocess as sp
 import math
+import matplotlib.pyplot as plt
 import numpy as np
 import argparse
 import ephem
@@ -44,27 +45,27 @@ parser.add_argument('-l', '--lat', nargs=1, default=[-80], type=float,
                     help="set the constant latitude, in degrees")
 parser.add_argument('-a', '--alt', nargs=1, default=[3600], type=float,
                     help="set the constant altitude, in meters")
-parser.add_argument('-f', '--filename', nargs=1,
-                    default=["fix_lat_alt_torque_data"],
-                    help="set the output filename, no extension")
+parser.add_argument('-s', '--startdate', nargs=1, default=["2018/12/30"], # 2018. + 364./365.
+                    help="set the startdate for projections, \
+yyyy/mm/dd, between 2015 and 2020")
 parser.add_argument('--crest', action='store_true', 
                     help="follow the original crest flight")
-parser.add_argument('-s', '--startdate', nargs=1, default=["2018/12/30"], # 2018. + 364./365.
-                    help="set the startdate for projections, yyyy/mm/dd, between 2015 and 2020")
-                    
+parser.add_argument('-p', '--plots', action='store_true',
+                    help="generate plots for torque and sun data")
+
 args = parser.parse_args()
 global lat
 global alt
-global filename
-global crest
 global start_date
+global crest
+global plots
 global crest_flight_data
 
 lat = args.lat[0]
 alt = args.alt[0]
-filename = args.filename[0]
-crest = args.crest
 start_date = args.startdate[0]
+crest = args.crest
+plots = args.plots
 crest_flight_data = np.load("crest_flight_data.npy")
 
 def set_lat(new_lat):
@@ -192,13 +193,80 @@ def make_sun_data():
 
     return sun_data[:,5:7]
 
-def make_torque_data():
+def make_torque_data(torque_data):
+    if crest:
+        return np.load('torque_data_sets/crest.npy')[:,5:7]
+
+    out_file_name = "torque_data_sets/lat_%f_alt_%f_torque_data.npy" % (lat, alt)
+    if os.path.isfile(out_file_name):
+        return np.load(out_file_name)[:,5:7]    
     
+    for i in range(len(torque_data)):
+        B_e = torque_data[i,7]
+        theta = math.radians(torque_data[i,6])
+        phi = math.radians(torque_data[i,5] - torque_data[i,9]) # B_decl - sun_az
+        torque_data[i,10] = math.degrees(phi)
+        torque_data[i,11] = torque_on_helix(B_e, theta, phi)
+
+    np.save(out_file_name, torque_data)
 
 ################################################################################
 # plot functions
 
+def my_plot(xs, ys, fmt='r,', xlabel='', ylabel='',
+         title='', filename='plots/plot.png'):
+    fig = plt.figure(dpi=100)
+    ax = fig.add_subplot(1,1,1)
+    ax.plot(xs, ys, fmt)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.set_title(title)
+    plt.savefig(filename)
+    plt.close()
 
+def make_plots(torque_data):
+
+    # make plot headers
+    file_header = "lat_%f_alt_%f" % (lat, alt)
+    if crest: title_header = ", CREST flight path"
+    else: title_header = ", Latitude: %f, Altitude: %f" % (lat, alt)
+    
+    # days, phis
+    my_plot(torque_data[:,0], torque_data[:,10],
+        xlabel="Projected Mission Day",
+        ylabel="Angle to Sun (deg)",
+        title="Angle to Sun, HELIX Fixed to Earth Field" + title_header,
+        filename="plots/%s_angle_to_sun.png" % file_header)
+
+    # days, torques
+    my_plot(torque_data[:,0], torque_data[:,11],
+        xlabel="Projected Mission Day",
+        ylabel="Torque on HELIX (Nm)",
+        title="Torque on HELIX over Projected Flight, Fixed to Sun" + title_header,
+        filename="plots/%s_fixed_to_sun_torques.png % file_header")
+
+    # days, alts
+    my_plot(torque_data[:,0], torque_data[:,8],
+        xlabel="Projected Missiopn Day",
+        ylabel="Altitude (deg)",
+        title="Altitude Above Horizon of Sun" + title_header,
+        filename="plots/%s_sun_alts.png" % file_header)
+
+    # days, azims
+    my_plot(torque_data[:,0], torque_data[:,9],
+        xlabel="Projected Mission Day",
+        ylabel="Azimuth (deg)",
+        title="Sun Azimuth (degrees East from North)" + title_header,
+        filename="plots/%s_sun_azims.png" % file_header)
+
+    # azims, alts
+    my_plot(torque_data[:,8], torque_data[:,9],
+        xlabel="Azimuth (deg)",
+        ylabel="Altitude (deg)",
+        title="Time Independent Path of Sun for a Fixed Point",
+        filename="plots/%s_stationary_sun_alts_vs_azims.png" % file_header)
+    
+    
 ################################################################################
 # define and execute main, if this is being run as a script
 # (might want to use plot, make_sun_data, and such in the python interpreter)
@@ -209,28 +277,17 @@ def main():
 
     # mission day, lat, long, alt, (pressure?),
     # B local decl (deg), B local incl (deg), B mag (T)
+    # sun alt (deg), sun azimuth (deg)
+    # phi (helix to sun), torque on helix (Nm)
     torque_data = np.zeros((len(crest_flight_data),
-                            len(crest_flight_data) + 3 + 2))
+                            len(crest_flight_data) + 3 + 2 + 2))
 
     torque_data[:,0:5] = crest_flight_data
     torque_data[:,5:8] = make_field_data(crest_flight_data)
     torque_data[:,8:10] = make_sun_data(crest_flight_data)
+
+    make_torque_data(torque_data) # adds phi and torques, saves the data
+
+    if plots: make_plots(torque_data)
     
-
 if __name__ == "__main__": main()
-
-# for i in range(len(sun_data)):
-#     B_e = earth_field_data[i,6]
-#     theta = math.radians(earth_field_data[i,5])
-#     phi = math.radians(earth_field_data[i,4] - sun_data[i,5])
-#     torque_data[i,9] = math.degrees(phi)
-#     torque_data[i,10] = torque_on_helix(B_e, theta, phi)
-
-# np.save("torque_data_fixed_sun.npy", torque_data)
-# np.savetxt("torque_data_fixed_sun.csv", torque_data, delimiter=", ",
-#            fmt=["%.3f", "%.4f", "%.3f", "%.4f",
-#                 "%.3f", "%.3f", "%.5e", "%.5e",
-#                 "%.3f", "%.3f", "%.3f"],
-#            header="mission_day, lat, long, alt, B decl, B incl, " +\
-#            "B mag (T), sun horizon alt, sun azimuth (E from N), phi " +\
-#            "(sun to field, deg), torque (Nm)")
