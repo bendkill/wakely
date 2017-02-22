@@ -9,7 +9,7 @@ flight_data = np.load("flight_data.npy")
 # mission day, lat, long, alt (km), (pressure?), topocentric ra, dec
 sun_data = np.zeros((len(flight_data), len(flight_data[0]) + 2))
 
-start_date = ephem.date("2019/12/30")
+start_date = ephem.date("2018/12/30")
 sun = ephem.Sun()
 helix = ephem.Observer()
 

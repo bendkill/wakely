@@ -1,0 +1,53 @@
+
+
+ Welcome to the World Magnetic Model (WMM) 2015 C-Program
+
+              --- Model Release Date: 15 Dec 2014 ---
+            --- Software Release Date: 21 Nov 2014 ---
+
+
+ This program estimates the strength and direction of 
+ Earth's main Magnetic field for a given point/area.
+ Enter h for help and contact information or c to continue.
+ >
+Please enter latitude
+North Latitude positive, For example:
+30, 30, 30 (D,M,S) or 30.508 (Decimal Degrees) (both are north)
+
+Please enter longitude
+East longitude positive, West negative.  For example:
+-100.5 or -100, 30, 0 for 100.5 degrees west
+
+Please enter height above mean sea level (in kilometers):
+[For height above WGS-84 Ellipsoid prefix E, for example (E20.1)]
+
+Please enter the decimal year or calendar date
+ (YYYY.yyy, MM DD YYYY or MM/DD/YYYY):
+
+Warning: The Horizontal Field strength at this location is only 15.296192
+	Compass readings have VERY LARGE uncertainties in areas where
+	where H is smaller than 1000 nT
+Press enter to continue...
+
+ Results For 
+
+Latitude	80.00S
+Longitude	161.17E
+Altitude:	36000.00 Kilometers above mean sea level
+Date:		2019.0
+
+		Main Field			Secular Change
+F	=	    199.1 +/- 152.0 nT		 Fdot =  -0.1	nT/yr
+H	=	     15.3 +/- 133.0 nT		 Hdot =  -0.0	nT/yr
+X	=	      3.3 +/- 138.0 nT		 Xdot =   0.1	nT/yr
+Y	=	     14.9 +/-  89.0 nT		 Ydot =  -0.0	nT/yr
+Z	=	   -198.5 +/- 165.0 nT		 Zdot =   0.1	nT/yr
+Decl	=      77 Deg  30 Min  (EAST) +/-10800 Min Ddot = -17.2	Min/yr
+Incl	=     -85 Deg -36 Min  (UP)   +/- 13 Min Idot = -0.3	Min/yr
+
+
+ Grid variation =     238 Deg  40 Min
+
+
+ Do you need more point data ? (y or n) 
+ 

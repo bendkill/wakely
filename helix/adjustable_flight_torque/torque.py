@@ -42,16 +42,17 @@ from toYearFraction import toYearFraction
 parser = argparse.ArgumentParser(description='Output angle to sun, \
 torque on Helix.')
 parser.add_argument('-l', '--lat', nargs=1, default=[-80], type=float,
-                    help="set the constant latitude, in degrees")
-parser.add_argument('-a', '--alt', nargs=1, default=[3600], type=float,
-                    help="set the constant altitude, in meters")
+                    help="set the constant latitude, in degrees, default = -80")
+parser.add_argument('-a', '--alt', nargs=1, default=[36000], type=float,
+                    help="set the constant altitude, in meters, default = 36000")
 parser.add_argument('-s', '--startdate', nargs=1, default=["2018/12/30"], # 2018. + 364./365.
-                    help="set the startdate for projections, \
-yyyy/mm/dd, between 2015 and 2020")
+                    help="set the startdate for projections, yyyy/mm/dd, between 2015 and 2020, do not change if following crest")
 parser.add_argument('--crest', action='store_true', 
                     help="follow the original crest flight")
 parser.add_argument('-p', '--plots', action='store_true',
                     help="generate plots for torque and sun data")
+parser.add_argument('-o', '--overwrite', action='store_true',
+                    help="overwrite sun and torque (but not field) data, as when making a change to the script")
 
 args = parser.parse_args()
 global lat
@@ -60,12 +61,14 @@ global start_date
 global crest
 global plots
 global crest_flight_data
+global overwrite
 
 lat = args.lat[0]
 alt = args.alt[0]
 start_date = args.startdate[0]
 crest = args.crest
 plots = args.plots
+overwrite = args.overwrite
 crest_flight_data = np.load("crest_flight_data.npy")
 
 def set_lat(new_lat):
@@ -76,6 +79,14 @@ def set_alt(new_alt):
     global alt
     alt = new_alt
 
+def set_crest():
+    global crest
+    crest = not crest
+
+def set_plots():
+    global plots
+    plots = not plots
+    
 ################################################################################
 # main torque function
 
@@ -119,7 +130,7 @@ def make_field_data():
     if crest:
         return np.load("field_data_sets/crest.npy")[:,4:7]
 
-    out_file_name = "field_data_sets/lat_%f_alt_%f_field_data.npy" % (lat, alt)
+    out_file_name = "field_data_sets/lat_%i_alt_%i_field_data.npy" % (int(lat), int(alt))
     if os.path.isfile(out_file_name):
         return np.load(out_file_name)[:,5:8]
 
@@ -163,8 +174,8 @@ def make_sun_data():
     if crest:
         return np.load('sun_data_sets/crest.npy')[:,5:7]
 
-    out_file_name = "sun_data_sets/lat_%f_alt_%f_sun_data.npy" % (lat, alt)
-    if os.path.isfile(out_file_name):
+    out_file_name = "sun_data_sets/lat_%i_alt_%i_sun_data.npy" % (int(lat), int(alt))
+    if os.path.isfile(out_file_name) and not overwrite:
         return np.load(out_file_name)[:,5:7]
     
     # mission day, lat, long, alt, (pressure?), alt, azimuth
@@ -173,48 +184,50 @@ def make_sun_data():
     start_day = ephem.date(start_date)
     sun = ephem.Sun()
     helix = ephem.Observer()
-    helix.lat = radians(lat)
+    helix.lat = math.radians(lat)
     helix.elevation = alt
 
     print("Making sun data...")
 
-    for i in range(len(flight_data)):
-        helix.date = start_date + flight_data[i,0]
+    for i in range(len(crest_flight_data)):
+        helix.date = start_day + crest_flight_data[i,0]
 
-        helix.lon = radians(flight_data[idx,2])
+        helix.lon = math.radians(crest_flight_data[i,2])
         # Can also specify temperature or pressure, if that's what the last
         # column specifies
         sun.compute(helix)
     
-        sun_data[i,5] = degrees(sun.alt)
-        sun_data[i,6] = degrees(sun.az)
+        sun_data[i,5] = math.degrees(sun.alt)
+        sun_data[i,6] = math.degrees(sun.az)
 
     np.save(out_file_name, sun_data)
 
     return sun_data[:,5:7]
 
 def make_torque_data(torque_data):
+
     if crest:
-        return np.load('torque_data_sets/crest.npy')[:,5:7]
+        return np.load('torque_data_sets/crest.npy')[:,9:11]
 
     out_file_name = "torque_data_sets/lat_%f_alt_%f_torque_data.npy" % (lat, alt)
-    if os.path.isfile(out_file_name):
-        return np.load(out_file_name)[:,5:7]    
+    if os.path.isfile(out_file_name) and not overwrite:
+        return np.load(out_file_name)[:,10:12]    
     
     for i in range(len(torque_data)):
         B_e = torque_data[i,7]
         theta = math.radians(torque_data[i,6])
         phi = math.radians(torque_data[i,5] - torque_data[i,9]) # B_decl - sun_az
-        torque_data[i,10] = math.degrees(phi)
+        torque_data[i,10] = math.degrees(phi) % 360
         torque_data[i,11] = torque_on_helix(B_e, theta, phi)
 
     np.save(out_file_name, torque_data)
+    return torque_data[:,10:12]
 
 ################################################################################
 # plot functions
 
 def my_plot(xs, ys, fmt='r,', xlabel='', ylabel='',
-         title='', filename='plots/plot.png'):
+            title='', filename='plots/plot.png'):
     fig = plt.figure(dpi=100)
     ax = fig.add_subplot(1,1,1)
     ax.plot(xs, ys, fmt)
@@ -227,9 +240,10 @@ def my_plot(xs, ys, fmt='r,', xlabel='', ylabel='',
 def make_plots(torque_data):
 
     # make plot headers
-    file_header = "lat_%f_alt_%f" % (lat, alt)
+    if crest: file_header = "crest"
+    else: file_header = "lat_%i_alt_%i" % (int(lat), int(alt))
     if crest: title_header = ", CREST flight path"
-    else: title_header = ", Latitude: %f, Altitude: %f" % (lat, alt)
+    else: title_header = ", Latitude: %i, Altitude: %i" % (int(lat), int(alt))
     
     # days, phis
     my_plot(torque_data[:,0], torque_data[:,10],
@@ -242,8 +256,8 @@ def make_plots(torque_data):
     my_plot(torque_data[:,0], torque_data[:,11],
         xlabel="Projected Mission Day",
         ylabel="Torque on HELIX (Nm)",
-        title="Torque on HELIX over Projected Flight, Fixed to Sun" + title_header,
-        filename="plots/%s_fixed_to_sun_torques.png % file_header")
+            title="Torque, given HELIX Fixed to Sun" + title_header,
+        filename="plots/%s_fixed_to_sun_torques.png" % file_header)
 
     # days, alts
     my_plot(torque_data[:,0], torque_data[:,8],
@@ -260,11 +274,11 @@ def make_plots(torque_data):
         filename="plots/%s_sun_azims.png" % file_header)
 
     # azims, alts
-    my_plot(torque_data[:,8], torque_data[:,9],
+    my_plot(torque_data[:,9], torque_data[:,8],
         xlabel="Azimuth (deg)",
         ylabel="Altitude (deg)",
-        title="Time Independent Path of Sun for a Fixed Point",
-        filename="plots/%s_stationary_sun_alts_vs_azims.png" % file_header)
+        title="Time Independent Path of Sun" + title_header,
+        filename="plots/%s_sun_alts_vs_azims.png" % file_header)
     
     
 ################################################################################
@@ -279,14 +293,15 @@ def main():
     # B local decl (deg), B local incl (deg), B mag (T)
     # sun alt (deg), sun azimuth (deg)
     # phi (helix to sun), torque on helix (Nm)
+    global torque_data
     torque_data = np.zeros((len(crest_flight_data),
-                            len(crest_flight_data) + 3 + 2 + 2))
+                            len(crest_flight_data[0]) + 3 + 2 + 2))
 
     torque_data[:,0:5] = crest_flight_data
-    torque_data[:,5:8] = make_field_data(crest_flight_data)
-    torque_data[:,8:10] = make_sun_data(crest_flight_data)
+    torque_data[:,5:8] = make_field_data()
+    torque_data[:,8:10] = make_sun_data()
 
-    make_torque_data(torque_data) # adds phi and torques, saves the data
+    torque_data[:,10:12] = make_torque_data(torque_data)
 
     if plots: make_plots(torque_data)
     
