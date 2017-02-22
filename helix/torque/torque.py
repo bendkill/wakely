@@ -52,16 +52,14 @@ parser.add_argument('--crest', action='store_true',
 parser.add_argument('-p', '--plots', action='store_true',
                     help="generate plots for torque and sun data")
 parser.add_argument('-o', '--overwrite', action='store_true',
-                    help="overwrite sun and torque (but not field) data, as when making a change to the script")
+                    help="overwrite sun and torque (but not field) data")
+parser.add_argument('-f', '--field', action='store_true',
+                    help="overwrite existing field data (time intensive)")
 
 args = parser.parse_args()
-global lat
-global alt
-global start_date
-global crest
-global plots
-global crest_flight_data
-global overwrite
+global lat, alt, start_date, crest, plots
+global overwrite, overwrite_field
+global crest_flight_data, file_header
 
 lat = args.lat[0]
 alt = args.alt[0]
@@ -69,8 +67,12 @@ start_date = args.startdate[0]
 crest = args.crest
 plots = args.plots
 overwrite = args.overwrite
+overwrite_field = args.field
 crest_flight_data = np.load("crest_flight_data.npy")
 
+if crest: file_header = "crest"
+else: file_header = "lat_%i_alt_%i" % (int(lat), int(alt))
+                                       
 def set_lat(new_lat):
     global lat
     lat = new_lat
@@ -118,7 +120,7 @@ def process_wmm_outputs(handle):
         if words[0] == "Decl":
             degs = float(words[2])
             mins = float(words[4])
-            data[0] = degs + mins / 60.
+            data[0] = (degs + mins / 60.) % 360
         if words[0] == "F":
             nTs = float(words[2])
             data[2] = nTs / 10**9
@@ -127,32 +129,36 @@ def process_wmm_outputs(handle):
     return data
 
 def make_field_data():
-    if crest:
-        return np.load("field_data_sets/crest.npy")[:,4:7]
-
-    out_file_name = "field_data_sets/lat_%i_alt_%i_field_data.npy" % (int(lat), int(alt))
-    if os.path.isfile(out_file_name):
+    out_file_name = "field_data_sets/%s_field_data.npy" % file_header
+    if os.path.isfile(out_file_name) and not overwrite_field:
         return np.load(out_file_name)[:,5:8]
 
     # mission day, lat, long, alt, (pressure?),
     # B local decl (deg), B local incl (deg), B mag (T)
     field_data = np.zeros((len(crest_flight_data), len(crest_flight_data[0]) + 3))
-    field_data[:,0:5] = crest_flight_data
+    field_data[:,0:5] = crest_flight_data[:,0:5]
+    
+    if not crest:                                   
+        field_data[:,1] = lat
+        field_data[:,3] = alt
 
-    print("Making field data; lat: %f, alt: %f..." % (lat, alt))
+    if crest: print("Making field data (crest)...")
+    else: print("Making field data; lat: %f, alt: %f..." % (lat, alt))
 
     start_year = toYearFraction(start_date) # default start_date = '2018/12/30'
     
     for i in range(len(crest_flight_data)):
         # set values according to args
-        lon = crest_flight_data[i,2]
+        local_lat = field_data[i,1]
+        local_lon = field_data[i,2]
+        local_alt = field_data[i,3]
         
         # get the field data for the point
-        dec_year = round(start_year + crest_flight_data[i,0] / 365., 3)
+        dec_year = round(start_year + field_data[i,0] / 365., 3)
         inputs_string = "c\n" +\
-                        str(lat) + "\n" +\
-                        str(lon) + "\n" +\
-                        str(alt) + "\n" +\
+                        str(local_lat) + "\n" +\
+                        str(local_lon) + "\n" +\
+                        str(local_alt) + "\n" +\
                         str(dec_year) + "\n"
 
         inputs_file = open("wmm_inputs.txt", 'w+')
@@ -171,15 +177,15 @@ def make_field_data():
     return field_data[:,5:8]
 
 def make_sun_data():
-    if crest:
-        return np.load('sun_data_sets/crest.npy')[:,5:7]
-
-    out_file_name = "sun_data_sets/lat_%i_alt_%i_sun_data.npy" % (int(lat), int(alt))
+    out_file_name = "sun_data_sets/%s_sun_data.npy" % file_header
     if os.path.isfile(out_file_name) and not overwrite:
         return np.load(out_file_name)[:,5:7]
     
     # mission day, lat, long, alt, (pressure?), alt, azimuth
     sun_data = np.zeros((len(crest_flight_data), len(crest_flight_data[0]) + 2))
+    sun_data[:,0:5] = crest_flight_data[:,0:5]
+    sun_data[:,1] = lat
+    sun_data[:,3] = alt
     
     start_day = ephem.date(start_date)
     sun = ephem.Sun()
@@ -197,21 +203,19 @@ def make_sun_data():
         # column specifies
         sun.compute(helix)
     
-        sun_data[i,5] = math.degrees(sun.alt)
-        sun_data[i,6] = math.degrees(sun.az)
+        sun_data[i,5] = math.degrees(sun.alt) % 360
+        sun_data[i,6] = math.degrees(sun.az) % 360
 
     np.save(out_file_name, sun_data)
 
     return sun_data[:,5:7]
 
-def make_torque_data(torque_data):
-
-    if crest:
-        return np.load('torque_data_sets/crest.npy')[:,9:11]
-
-    out_file_name = "torque_data_sets/lat_%f_alt_%f_torque_data.npy" % (lat, alt)
+def make_torque_data():
+    out_file_name = "torque_data_sets/%s_torque_data.npy" % file_header
     if os.path.isfile(out_file_name) and not overwrite:
-        return np.load(out_file_name)[:,10:12]    
+        return np.load(out_file_name)[:,10:12]
+
+    print("Making torque data...")
     
     for i in range(len(torque_data)):
         B_e = torque_data[i,7]
@@ -237,48 +241,94 @@ def my_plot(xs, ys, fmt='r,', xlabel='', ylabel='',
     plt.savefig(filename)
     plt.close()
 
-def make_plots(torque_data):
+def make_plots():
 
     # make plot headers
-    if crest: file_header = "crest"
-    else: file_header = "lat_%i_alt_%i" % (int(lat), int(alt))
+    if not os.path.isdir("plots/" + file_header):
+        os.mkdir("plots/" + file_header)
+
     if crest: title_header = ", CREST flight path"
     else: title_header = ", Latitude: %i, Altitude: %i" % (int(lat), int(alt))
+
+    print("Making plots...")
     
     # days, phis
     my_plot(torque_data[:,0], torque_data[:,10],
-        xlabel="Projected Mission Day",
+        xlabel="Mission Day",
         ylabel="Angle to Sun (deg)",
         title="Angle to Sun, HELIX Fixed to Earth Field" + title_header,
-        filename="plots/%s_angle_to_sun.png" % file_header)
+        filename="plots/%s/angle_to_sun.png" % file_header)
 
     # days, torques
     my_plot(torque_data[:,0], torque_data[:,11],
-        xlabel="Projected Mission Day",
+        xlabel="Mission Day",
         ylabel="Torque on HELIX (Nm)",
             title="Torque, given HELIX Fixed to Sun" + title_header,
-        filename="plots/%s_fixed_to_sun_torques.png" % file_header)
+        filename="plots/%s/fixed_to_sun_torques.png" % file_header)
 
     # days, alts
     my_plot(torque_data[:,0], torque_data[:,8],
-        xlabel="Projected Missiopn Day",
+        xlabel="Mission Day",
         ylabel="Altitude (deg)",
         title="Altitude Above Horizon of Sun" + title_header,
-        filename="plots/%s_sun_alts.png" % file_header)
+        filename="plots/%s/sun_alts.png" % file_header)
 
     # days, azims
     my_plot(torque_data[:,0], torque_data[:,9],
-        xlabel="Projected Mission Day",
+        xlabel="Mission Day",
         ylabel="Azimuth (deg)",
         title="Sun Azimuth (degrees East from North)" + title_header,
-        filename="plots/%s_sun_azims.png" % file_header)
+        filename="plots/%s/sun_azims.png" % file_header)
 
     # azims, alts
     my_plot(torque_data[:,9], torque_data[:,8],
         xlabel="Azimuth (deg)",
         ylabel="Altitude (deg)",
         title="Time Independent Path of Sun" + title_header,
-        filename="plots/%s_sun_alts_vs_azims.png" % file_header)
+        filename="plots/%s/sun_alts_vs_azims.png" % file_header)
+
+    # days, lat
+    my_plot(torque_data[:,0], torque_data[:,1],
+        xlabel="Mission Day",
+        ylabel="Latitude (deg)",
+        title="Latitude of Payload" + title_header,
+        filename="plots/%s/payload_lats.png" % file_header)
+
+    # days, long
+    my_plot(torque_data[:,0], torque_data[:,2],
+        xlabel="Mission Day",
+        ylabel="Longitude (deg)",
+        title="Longitude of Payload" + title_header,
+        filename="plots/%s/payload_longs.png" % file_header)
+
+    # days, alt
+    my_plot(torque_data[:,0], torque_data[:,3],
+        xlabel="Mission Day",
+        ylabel="Altitude (m)",
+        title="Altitude of Payload" + title_header,
+        filename="plots/%s/payload_alts.png" % file_header)
+
+    # days, B local decl
+    my_plot(torque_data[:,0], torque_data[:,5],
+        xlabel="Mission Day",
+        ylabel="B Declination (deg E of N)",
+        title="Local Declination of Earth's Magnetic Field" + title_header,
+        filename="plots/%s/decl_vs_days.png" % file_header)
+
+    # long, B local decl
+    my_plot(torque_data[:,2], torque_data[:,5],
+        xlabel="Longitude (deg)",
+        ylabel="B Declination (deg E of N)",
+        title="Declination of B Field vs Longitude" + title_header,
+        filename="plots/%s/decl_vs_longs.png" % file_header)
+    
+    # days, B mag
+    my_plot(torque_data[:,0], torque_data[:,7],
+        xlabel="Mission Day",
+        ylabel="B Magnitude (T)",
+        title="Magnitude of Earth's Magnetic Field" + title_header,
+        filename="plots/%s/earth_field_mag.png" % file_header)
+
     
     
 ################################################################################
@@ -298,11 +348,13 @@ def main():
                             len(crest_flight_data[0]) + 3 + 2 + 2))
 
     torque_data[:,0:5] = crest_flight_data
+    if not crest:
+        torque_data[:,1] = lat
+        torque_data[:,3] = alt
     torque_data[:,5:8] = make_field_data()
     torque_data[:,8:10] = make_sun_data()
+    torque_data[:,10:12] = make_torque_data()
 
-    torque_data[:,10:12] = make_torque_data(torque_data)
-
-    if plots: make_plots(torque_data)
+    if plots: make_plots()
     
 if __name__ == "__main__": main()
