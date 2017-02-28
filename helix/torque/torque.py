@@ -94,12 +94,12 @@ def set_plots():
 # main torque function
 
 def torque_on_helix(B_e, theta, phi):
+    # finds the up component of the torque
     # Angles should be in radians
     R = 0.2286 # meters
     I = 1.437e6 # Amperes
-    return 2 * B_e * math.pi * R**2 * I *\
-        math.sqrt(math.cos(theta)**2 +
-                  (math.sin(theta) * math.cos(phi))**2)
+    return - 2 * B_e * math.pi * R**2 * I *\
+        math.sin(theta) * math.cos(phi)
 
 ################################################################################
 # functions for creating various data sets
@@ -205,7 +205,7 @@ def make_sun_data():
         sun.compute(helix)
     
         sun_data[i,5] = math.degrees(sun.alt)
-        sun_data[i,6] = f.to_on_eighty(math.degrees(sun.az))
+        sun_data[i,6] = f.to_one_eighty(math.degrees(sun.az))
 
     np.save(out_file_name, sun_data)
 
