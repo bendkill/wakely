@@ -38,6 +38,7 @@ import argparse
 import ephem
 from datetime import datetime as dt
 from toYearFraction import toYearFraction
+import funcs as f
 
 parser = argparse.ArgumentParser(description='Output angle to sun, \
 torque on Helix.')
@@ -120,7 +121,7 @@ def process_wmm_outputs(handle):
         if words[0] == "Decl":
             degs = float(words[2])
             mins = float(words[4])
-            data[0] = (degs + mins / 60.) % 360
+            data[0] = (degs + mins / 60.)
         if words[0] == "F":
             nTs = float(words[2])
             data[2] = nTs / 10**9
@@ -203,8 +204,8 @@ def make_sun_data():
         # column specifies
         sun.compute(helix)
     
-        sun_data[i,5] = math.degrees(sun.alt) % 360
-        sun_data[i,6] = math.degrees(sun.az) % 360
+        sun_data[i,5] = math.degrees(sun.alt)
+        sun_data[i,6] = f.to_on_eighty(math.degrees(sun.az))
 
     np.save(out_file_name, sun_data)
 
@@ -220,8 +221,8 @@ def make_torque_data():
     for i in range(len(torque_data)):
         B_e = torque_data[i,7]
         theta = math.radians(torque_data[i,6])
-        phi = math.radians(torque_data[i,5] - torque_data[i,9]) # B_decl - sun_az
-        torque_data[i,10] = math.degrees(phi) % 360
+        phi = math.radians(f.to_one_eighty(torque_data[i,5] - torque_data[i,9])) # B_decl - sun_az
+        torque_data[i,10] = math.degrees(phi)
         torque_data[i,11] = torque_on_helix(B_e, theta, phi)
 
     np.save(out_file_name, torque_data)
